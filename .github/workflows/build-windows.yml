@@ -1,0 +1,59 @@
+
+name: Build DOSVIG for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Get repository
+        uses: actions/checkout@v4
+
+      - name: Extract DOSVIG ZIP
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:GITHUB_WORKSPACE "DOSVIG_AutoBuild_Windows_No_Visual_Studio.zip"
+          if (!(Test-Path $zip)) {
+            throw "DOSVIG ZIP archive not found in repository root."
+          }
+          $dest = Join-Path $env:RUNNER_TEMP "dosvig-source"
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          Copy-Item (Join-Path $dest "DOSVIG_Auth_Connect") $env:GITHUB_WORKSPACE -Recurse -Force
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build DOSVIG.exe
+        working-directory: DOSVIG_Auth_Connect
+        run: >
+          dotnet publish DOSVIGLauncher.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o ../publish
+
+      - name: Rename EXE
+        shell: pwsh
+        run: Rename-Item publish/DOSVIGLauncher.exe DOSVIG.exe
+
+      - name: Upload DOSVIG.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOSVIG-Windows-x64
+          path: publish/DOSVIG.exe
+          if-no-files-found: error
+          retention-days: 30
